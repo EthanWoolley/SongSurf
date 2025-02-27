@@ -1,10 +1,13 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class SpotifyService {
   static final SpotifyService _instance = SpotifyService._internal();
   bool _isInitialized = false;
+  String? _accessToken;
 
   factory SpotifyService() {
     return _instance;
@@ -28,15 +31,72 @@ class SpotifyService {
 
   Future<void> authenticate() async {
     final clientId = dotenv.env['SPOTIFY_CLIENT_ID']!;
-    final redirectUrl = dotenv.env['SPOTIFY_REDIRECT_URL']!;
+    final clientSecret = dotenv.env['SPOTIFY_CLIENT_SECRET']!;
+    final credentials = base64.encode(utf8.encode('$clientId:$clientSecret'));
     
     try {
+      final response = await http.post(
+        Uri.parse('https://accounts.spotify.com/api/token'),
+        headers: {
+          'Authorization': 'Basic $credentials',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'grant_type': 'client_credentials',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _accessToken = data['access_token'];
+      } else {
+        throw Exception('Failed to authenticate with Spotify API');
+      }
+
       await SpotifySdk.connectToSpotifyRemote(
         clientId: clientId,
-        redirectUrl: redirectUrl,
+        redirectUrl: dotenv.env['SPOTIFY_REDIRECT_URL']!,
       );
     } catch (e) {
       throw Exception('Failed to authenticate with Spotify: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> searchTracks(String query) async {
+    if (_accessToken == null) {
+      await authenticate();
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://api.spotify.com/v1/search?q=${Uri.encodeComponent(query)}&type=track&limit=10',
+        ),
+        headers: {
+          'Authorization': 'Bearer $_accessToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return (data['tracks']['items'] as List).map((track) {
+          return {
+            'id': track['id'],
+            'uri': track['uri'],
+            'name': track['name'],
+            'artist': track['artists'][0]['name'],
+            'albumArt': track['album']['images'][0]['url'],
+          };
+        }).toList();
+      } else if (response.statusCode == 401) {
+        // Token expired, refresh and retry
+        await authenticate();
+        return searchTracks(query);
+      } else {
+        throw Exception('Failed to search tracks');
+      }
+    } catch (e) {
+      throw Exception('Failed to search tracks: $e');
     }
   }
 
