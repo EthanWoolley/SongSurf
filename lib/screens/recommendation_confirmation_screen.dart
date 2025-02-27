@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:songsurf/screens/recommendation_received_screen.dart';
+import 'package:songsurf/screens/home_screen.dart';
 import 'package:songsurf/services/supabase_service.dart';
 import 'package:songsurf/widgets/animated_background.dart';
 import 'package:songsurf/widgets/wide_button.dart';
@@ -68,35 +69,80 @@ class _RecommendationConfirmationScreenState
     setState(() => _isLoading = true);
 
     try {
-      // Create the recommendation
-      final recommendation = await _supabaseService.createRecommendation(
-        senderId: widget.userId,
-        songId: widget.song['id'],
-        songName: widget.song['name'],
-        artistName: widget.song['artist'],
-      );
+      // Validate song data
+      if (widget.song['id'] == null || 
+          widget.song['name'] == null || 
+          widget.song['artist'] == null) {
+        throw Exception('Invalid song data: missing required fields');
+      }
 
+      print('Creating recommendation with song data:');
+      print('ID: ${widget.song['id']}');
+      print('Name: ${widget.song['name']}');
+      print('Artist: ${widget.song['artist']}');
+      print('User ID: ${widget.userId}');
+      
+      if (widget.userId == null || widget.userId.isEmpty) {
+        throw Exception('Invalid user ID: ${widget.userId}');
+      }
+      
+      try {
+        // Create the recommendation
+        final recommendation = await _supabaseService.createRecommendation(
+          senderId: widget.userId,
+          songId: widget.song['id'].toString(),
+          songName: widget.song['name'].toString(),
+          artistName: widget.song['artist'].toString(),
+          albumArt: widget.song['albumArt']?.toString(),
+        );
+        print('Recommendation created successfully: ${recommendation.id}');
+      } catch (e, stackTrace) {
+        print('Error creating recommendation:');
+        print('Error: $e');
+        print('Stack trace: $stackTrace');
+        rethrow;
+      }
+
+      print('Updating last recommendation time...');
       // Update user's last recommendation time
       await _supabaseService.updateLastRecommendationTime(widget.userId);
+      print('Last recommendation time updated');
 
+      print('Getting random pending recommendation...');
       // Get a random pending recommendation
       final receivedRecommendation =
           await _supabaseService.getRandomPendingRecommendation(widget.userId);
+      print('Random pending recommendation result: ${receivedRecommendation?.id ?? 'none found'}');
 
       if (!mounted) return;
 
       if (receivedRecommendation != null) {
+        print('Matching recommendation...');
         // Match the received recommendation
-        await _supabaseService.matchRecommendation(
+        final matchSuccess = await _supabaseService.matchRecommendation(
           receivedRecommendation.id,
           widget.userId,
         );
+        print('Match result: ${matchSuccess ? 'success' : 'failed'}');
 
+        if (!matchSuccess) {
+          print('Match failed, showing error');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to match recommendation. Please try again.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+
+        print('Starting reverse animation...');
         // Animate out and navigate to received screen
         await _controller.reverse();
 
         if (!mounted) return;
 
+        print('Navigating to received screen...');
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
@@ -114,8 +160,40 @@ class _RecommendationConfirmationScreenState
             transitionDuration: const Duration(milliseconds: 500),
           ),
         );
+      } else {
+        print('No matching recommendation found');
+        // No matching recommendation found, show feedback and navigate to home
+        await _controller.reverse();
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recommendation sent! No matching recommendations found yet.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+        print('Navigating to home screen...');
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                HomeScreen(
+              name: widget.name,
+              userId: widget.userId,
+            ),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+            transitionDuration: const Duration(milliseconds: 500),
+          ),
+        );
       }
     } catch (e) {
+      print('Error in confirmation flow: ${e.toString()}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -143,7 +221,7 @@ class _RecommendationConfirmationScreenState
               children: [
                 const Spacer(),
                 Text(
-                  'Confirm your\nrecommendation 🎵',
+                  'Confirm your\nrecommendation',
                   style: Theme.of(context).textTheme.displayLarge,
                 ),
                 const Spacer(),

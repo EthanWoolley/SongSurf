@@ -6,7 +6,9 @@ part 'user_model.g.dart';
 class UserModel {
   final String id;
   final String email;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
+  @JsonKey(name: 'last_recommendation_time')
   final DateTime? lastRecommendationTime;
 
   UserModel({

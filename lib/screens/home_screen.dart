@@ -124,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: AspectRatio(
                 aspectRatio: 1,
                 child: CachedNetworkImage(
-                  imageUrl: 'https://i.scdn.co/image/${recommendation.songId}',
+                  imageUrl: recommendation.albumArt ?? 'https://i.scdn.co/image/ab67616d0000b273b36949bee43217351961ffbc',
                   fit: BoxFit.cover,
                 ),
               ),
@@ -201,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Welcome back,\n${widget.name}! 👋',
+                                'Welcome back,\n${widget.name}!',
                                 style: Theme.of(context).textTheme.displayLarge,
                               ),
                               const SizedBox(height: 24),
@@ -215,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         DateTime.now().difference(_lastRecommendationTime!) >
                                             const Duration(hours: 24)
                                     ? _navigateToSongSelection
-                                    : null,
+                                    : () {},
                               ),
                               const SizedBox(height: 48),
                               Text(
@@ -231,8 +231,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         sliver: SliverList(
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {
-                              final date = recommendationsByDate.keys.toList()
-                                ..sort((a, b) => b.compareTo(a))[index];
+                              final dates = recommendationsByDate.keys.toList()
+                                ..sort((a, b) => b.compareTo(a));
+                              final date = dates[index];
                               final recommendations = recommendationsByDate[date]!;
                               
                               return Column(
@@ -249,15 +250,52 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   ...recommendations
                                       .where((r) => r.status == RecommendationStatus.matched)
-                                      .map((sent) {
-                                    final received = recommendations.firstWhere(
-                                      (r) =>
-                                          r.status == RecommendationStatus.matched &&
-                                          r != sent,
-                                      orElse: () => sent,
-                                    );
-                                    return _buildRecommendationPair(sent, received);
-                                  }).toList(),
+                                      .map((r) {
+                                    if (r.senderId == widget.userId) {
+                                      // This is a sent recommendation, find its received pair
+                                      final received = recommendations.firstWhere(
+                                        (other) => 
+                                            other.status == RecommendationStatus.matched && 
+                                            other.receiverId == widget.userId,
+                                        orElse: () => RecommendationModel(
+                                          id: '',
+                                          senderId: '',
+                                          songId: '',
+                                          songName: 'No match yet',
+                                          artistName: 'Keep waiting!',
+                                          createdAt: r.createdAt,
+                                          status: RecommendationStatus.pending,
+                                        ),
+                                      );
+                                      return _buildRecommendationPair(r, received);
+                                    } else if (r.receiverId == widget.userId) {
+                                      // This is a received recommendation, find the user's most recent sent recommendation
+                                      final sentRecommendations = _recommendations
+                                          .where((rec) => rec.senderId == widget.userId)
+                                          .toList();
+                                      
+                                      // Sort by creation date, newest first
+                                      sentRecommendations.sort((a, b) => 
+                                          b.createdAt.compareTo(a.createdAt));
+                                      
+                                      // Use the most recent sent recommendation, or a placeholder if none exists
+                                      final sent = sentRecommendations.isNotEmpty 
+                                          ? sentRecommendations.first 
+                                          : RecommendationModel(
+                                              id: '',
+                                              senderId: widget.userId,
+                                              songId: '',
+                                              songName: 'No recommendation sent yet',
+                                              artistName: 'Try sending one!',
+                                              albumArt: 'https://i.scdn.co/image/ab67616d0000b273b36949bee43217351961ffbc',
+                                              createdAt: r.createdAt,
+                                              status: RecommendationStatus.pending,
+                                            );
+                                      
+                                      return _buildRecommendationPair(sent, r);
+                                    }
+                                    return const SizedBox.shrink();
+                                  }).where((widget) => widget != const SizedBox.shrink()).toList(),
                                 ],
                               );
                             },

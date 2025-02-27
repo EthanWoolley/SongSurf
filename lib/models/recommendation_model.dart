@@ -10,13 +10,23 @@ enum RecommendationStatus {
 @JsonSerializable()
 class RecommendationModel {
   final String id;
+  @JsonKey(name: 'sender_id')
   final String senderId;
+  @JsonKey(name: 'receiver_id')
   final String? receiverId;
+  @JsonKey(name: 'song_id')
   final String songId;
+  @JsonKey(name: 'song_name')
   final String songName;
+  @JsonKey(name: 'artist_name')
   final String artistName;
+  @JsonKey(name: 'album_art')
+  final String? albumArt;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
-  @JsonKey(defaultValue: RecommendationStatus.pending)
+  @JsonKey(name: 'matched_at')
+  final DateTime? matchedAt;
+  @JsonKey(name: 'status', defaultValue: RecommendationStatus.pending)
   final RecommendationStatus status;
 
   RecommendationModel({
@@ -26,7 +36,9 @@ class RecommendationModel {
     required this.songId,
     required this.songName,
     required this.artistName,
+    this.albumArt,
     required this.createdAt,
+    this.matchedAt,
     this.status = RecommendationStatus.pending,
   });
 
@@ -42,7 +54,9 @@ class RecommendationModel {
     String? songId,
     String? songName,
     String? artistName,
+    String? albumArt,
     DateTime? createdAt,
+    DateTime? matchedAt,
     RecommendationStatus? status,
   }) {
     return RecommendationModel(
@@ -52,7 +66,9 @@ class RecommendationModel {
       songId: songId ?? this.songId,
       songName: songName ?? this.songName,
       artistName: artistName ?? this.artistName,
+      albumArt: albumArt ?? this.albumArt,
       createdAt: createdAt ?? this.createdAt,
+      matchedAt: matchedAt ?? this.matchedAt,
       status: status ?? this.status,
     );
   }

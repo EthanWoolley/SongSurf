@@ -102,7 +102,7 @@ class _SongSelectionScreenState extends State<SongSelectionScreen> {
               children: [
                 const SizedBox(height: 32),
                 Text(
-                  'Pick a song to\nrecommend 🎵',
+                  'What are you listening to?',
                   style: Theme.of(context).textTheme.displayLarge,
                 ),
                 const SizedBox(height: 32),

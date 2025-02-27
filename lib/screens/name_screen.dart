@@ -71,7 +71,7 @@ class _NameScreenState extends State<NameScreen> {
               children: [
                 const Spacer(),
                 Text(
-                  'Welcome to\nSongSurf 🌊',
+                  'Welcome to\nSongSurf',
                   style: Theme.of(context).textTheme.displayLarge,
                 ),
                 const SizedBox(height: 32),

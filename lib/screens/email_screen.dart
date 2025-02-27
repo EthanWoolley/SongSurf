@@ -109,7 +109,7 @@ class _EmailScreenState extends State<EmailScreen> {
               children: [
                 const Spacer(),
                 Text(
-                  'Hi ${widget.name}! 👋',
+                  'Hi ${widget.name}!',
                   style: Theme.of(context).textTheme.displayLarge,
                 ),
                 const SizedBox(height: 32),

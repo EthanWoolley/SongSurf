@@ -115,7 +115,7 @@ class _RecommendationReceivedScreenState
               children: [
                 const Spacer(),
                 Text(
-                  'You received a\nrecommendation! 🎉',
+                  'You received a\nrecommendation!',
                   style: Theme.of(context).textTheme.displayLarge,
                 ),
                 const Spacer(),
@@ -135,7 +135,7 @@ class _RecommendationReceivedScreenState
                                   borderRadius: BorderRadius.circular(16),
                                   child: CachedNetworkImage(
                                     imageUrl:
-                                        'https://i.scdn.co/image/${widget.recommendation.songId}',
+                                        widget.recommendation.albumArt ?? 'https://i.scdn.co/image/ab67616d0000b273b36949bee43217351961ffbc',
                                     width: 280,
                                     height: 280,
                                     fit: BoxFit.cover,
