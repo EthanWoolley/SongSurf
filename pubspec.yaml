@@ -45,6 +45,7 @@ dependencies:
   url_launcher: ^6.2.1
   shared_preferences: ^2.2.2
   uuid: ^4.3.3
+  sensors_plus: ^4.0.2
 
 dev_dependencies:
   flutter_test:
