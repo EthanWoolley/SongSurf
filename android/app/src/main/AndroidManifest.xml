@@ -54,5 +54,12 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="spotify" />
         </intent>
+        <!-- Additional Spotify intent filters -->
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
     </queries>
+    
+    <!-- Add internet permission explicitly -->
+    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

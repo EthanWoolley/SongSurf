@@ -4,12 +4,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
 
 class SpotifyService {
   static final SpotifyService _instance = SpotifyService._internal();
   bool _isInitialized = false;
   bool _isSpotifyInstalled = false;
   String? _accessToken;
+  bool? _spotifyAppConnectionToken;
 
   factory SpotifyService() {
     return _instance;
@@ -21,41 +23,60 @@ class SpotifyService {
     if (_isInitialized) return;
 
     try {
-      // First check if Spotify is installed using a more reliable method
-      if (Platform.isIOS) {
-        // On iOS, we'll check if we can launch the Spotify URL scheme
-        final canLaunch = await canLaunchUrl(Uri.parse('spotify:app'));
-        _isSpotifyInstalled = canLaunch;
-      } else {
-        // For Android, try to check if Spotify is installed
+      final clientId = dotenv.env['SPOTIFY_CLIENT_ID']!;
+      final redirectUrl = dotenv.env['SPOTIFY_REDIRECT_URL']!;
+      
+      print('Initializing Spotify service with:');
+      print('Client ID: $clientId');
+      print('Redirect URL: $redirectUrl');
+      
+      // Check if Spotify is installed - in v3.0.2, we need to use a different approach
+      try {
+        // In the new version, we can try to connect and catch the error if Spotify isn't installed
+        _isSpotifyInstalled = true; // Assume true initially
+        
+        // We'll know it's not installed if connection fails with specific error
+        print('Checking if Spotify is installed by attempting connection...');
+      } catch (e) {
+        print('Warning: Failed to check if Spotify is installed: $e');
+        _isSpotifyInstalled = true; // Assume it's installed and try anyway
+      }
+      
+      // Try to connect to Spotify remote
+      if (_isSpotifyInstalled) {
         try {
-          // Try to check if Spotify app is active as a proxy for installation
-          _isSpotifyInstalled = await SpotifySdk.isSpotifyAppActive;
+          // The new SDK version uses a different connection method
+          final connectionResult = await SpotifySdk.connectToSpotifyRemote(
+            clientId: clientId,
+            redirectUrl: redirectUrl,
+          );
+          print('Successfully connected to Spotify Remote: $connectionResult');
+          _spotifyAppConnectionToken = connectionResult;
         } catch (e) {
-          // Fallback to checking if we can launch the Spotify URL
-          _isSpotifyInstalled = await canLaunchUrl(Uri.parse('spotify:app'));
+          print('Warning: Failed to connect to Spotify remote: $e');
+          // If we get a specific error about Spotify not being installed, update our flag
+          if (e.toString().contains('Spotify app is not installed') || 
+              e.toString().contains('CouldNotFindSpotifyApp')) {
+            _isSpotifyInstalled = false;
+            print('Spotify app is not installed based on connection error');
+          }
+          // We can still use the app with URL launching and Web API
         }
       }
       
-      // Only try to connect if Spotify is installed
-      if (_isSpotifyInstalled) {
-        try {
-          await SpotifySdk.connectToSpotifyRemote(
-            clientId: dotenv.env['SPOTIFY_CLIENT_ID']!,
-            redirectUrl: dotenv.env['SPOTIFY_REDIRECT_URL']!,
-          );
-        } catch (e) {
-          // If connection fails, we can still use the app with URL launching
-          print('Warning: Failed to connect to Spotify remote: $e');
-        }
+      // Always authenticate with the Web API as a fallback
+      try {
+        await authenticate();
+        print('Successfully authenticated with Spotify Web API');
+      } catch (authError) {
+        print('Warning: Failed to authenticate with Spotify Web API: $authError');
       }
       
       _isInitialized = true;
     } catch (e) {
       // If there's an error, we can still use the web API
-      _isSpotifyInstalled = false;
-      _isInitialized = true;
       print('Warning: Failed to initialize Spotify SDK: $e');
+      _isInitialized = true;
     }
   }
 
@@ -80,20 +101,7 @@ class SpotifyService {
         final data = json.decode(response.body);
         _accessToken = data['access_token'];
       } else {
-        throw Exception('Failed to authenticate with Spotify API');
-      }
-
-      // Only try to connect to Spotify remote if the app is installed
-      if (_isSpotifyInstalled) {
-        try {
-          await SpotifySdk.connectToSpotifyRemote(
-            clientId: clientId,
-            redirectUrl: dotenv.env['SPOTIFY_REDIRECT_URL']!,
-          );
-        } catch (e) {
-          print('Warning: Failed to connect to Spotify remote: $e');
-          // We can continue without remote connection
-        }
+        throw Exception('Failed to authenticate with Spotify API: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       throw Exception('Failed to authenticate with Spotify: $e');
@@ -153,8 +161,12 @@ class SpotifyService {
 
   Future<bool> checkConnection() async {
     try {
-      return await SpotifySdk.isSpotifyAppActive;
+      // In v3.0.2, we need to use a different approach
+      // Try to get the player state, which will throw if not connected
+      final playerState = await SpotifySdk.getPlayerState();
+      return playerState != null;
     } catch (e) {
+      print('Error checking Spotify connection: $e');
       return false;
     }
   }
@@ -176,10 +188,29 @@ class SpotifyService {
       final bool connected = await checkConnection();
       if (connected) {
         try {
+          // Use the updated play method with more options
           await SpotifySdk.play(spotifyUri: 'spotify:track:$trackId');
           return; // Success!
         } catch (e) {
           print('SDK play failed, falling back to URL: $e');
+          // Fall through to URL launching
+        }
+      } else {
+        // Try to reconnect if not connected
+        try {
+          final clientId = dotenv.env['SPOTIFY_CLIENT_ID']!;
+          final redirectUrl = dotenv.env['SPOTIFY_REDIRECT_URL']!;
+          
+          await SpotifySdk.connectToSpotifyRemote(
+            clientId: clientId,
+            redirectUrl: redirectUrl,
+          );
+          
+          // Try playing again after reconnection
+          await SpotifySdk.play(spotifyUri: 'spotify:track:$trackId');
+          return; // Success!
+        } catch (reconnectError) {
+          print('Reconnection failed: $reconnectError');
           // Fall through to URL launching
         }
       }
@@ -268,4 +299,79 @@ class SpotifyService {
 
   // Add a method to check if Spotify is installed
   bool get isSpotifyInstalled => _isSpotifyInstalled;
+  
+  // Test function to verify Spotify connection
+  Future<Map<String, dynamic>> testSpotifyConnection() async {
+    final result = <String, dynamic>{
+      'isSpotifyInstalled': _isSpotifyInstalled,
+      'isInitialized': _isInitialized,
+      'hasAccessToken': _accessToken != null,
+      'hasSpotifyAppConnectionToken': _spotifyAppConnectionToken != null,
+      'clientId': dotenv.env['SPOTIFY_CLIENT_ID'],
+      'redirectUrl': dotenv.env['SPOTIFY_REDIRECT_URL'],
+      'sdkVersion': '3.0.2',
+    };
+    
+    try {
+      // Try to check if Spotify app is installed - in v3.0.2, we infer this from connection attempts
+      try {
+        // We'll try to get player state, which will fail if Spotify isn't installed
+        final playerState = await SpotifySdk.getPlayerState();
+        result['isSpotifyInstalled'] = playerState != null;
+      } catch (e) {
+        result['isSpotifyInstalledError'] = e.toString();
+        // If we get a specific error about Spotify not being installed, update our result
+        if (e.toString().contains('Spotify app is not installed') || 
+            e.toString().contains('CouldNotFindSpotifyApp')) {
+          result['isSpotifyInstalled'] = false;
+        }
+      }
+      
+      // Try to check if Spotify app is connected
+      try {
+        final playerState = await SpotifySdk.getPlayerState();
+        result['isSpotifyAppConnected'] = playerState != null;
+        result['playerState'] = playerState.toString();
+      } catch (e) {
+        result['isSpotifyAppConnectedError'] = e.toString();
+      }
+      
+      // Try to check if we can launch Spotify URLs
+      try {
+        result['canLaunchSpotifyUri'] = await canLaunchUrl(Uri.parse('spotify:'));
+      } catch (e) {
+        result['canLaunchSpotifyUriError'] = e.toString();
+      }
+      
+      // Try to connect to Spotify remote
+      try {
+        final clientId = dotenv.env['SPOTIFY_CLIENT_ID']!;
+        final redirectUrl = dotenv.env['SPOTIFY_REDIRECT_URL']!;
+        
+        final connectionResult = await SpotifySdk.connectToSpotifyRemote(
+          clientId: clientId,
+          redirectUrl: redirectUrl,
+        );
+        result['connectedToSpotifyRemote'] = connectionResult != null;
+        result['spotifyConnectionToken'] = connectionResult;
+      } catch (e) {
+        result['connectToSpotifyRemoteError'] = e.toString();
+      }
+      
+      // Try to get an access token
+      try {
+        await authenticate();
+        result['gotAccessToken'] = _accessToken != null;
+      } catch (e) {
+        result['getAccessTokenError'] = e.toString();
+      }
+      
+      return result;
+    } catch (e) {
+      return {
+        ...result,
+        'testError': e.toString(),
+      };
+    }
+  }
 } 
