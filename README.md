@@ -1,6 +1,6 @@
 # SongSurf
 
-SongSurf is a music discovery app that lets you share and receive song recommendations with random users worldwide. Send a song into the universe and catch a wave of musical inspiration in return!
+SongSurf is a music discovery app that lets you share and receive song recommendations with random users worldwide. Built with Cursor
 
 ## Prerequisites
 
