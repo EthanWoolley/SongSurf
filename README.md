@@ -85,7 +85,7 @@ lib/
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Please contact Ethan for details on contributing
 
 ## License
 
